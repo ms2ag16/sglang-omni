@@ -14,7 +14,7 @@ from sglang_omni.models.voxtral_tts.voxtral_tts_audio_generation import (
     interleave_qk_weight,
 )
 
-LAYER_KEY_PATTERN = re.compile("^layers\.(\d+)\.(.+)$")
+LAYER_KEY_PATTERN = re.compile(r"^layers\.(\d+)\.(.+)$")
 LAYER_KEY_MAP: dict[str, str] = {
     "attention.wq.weight": "self_attn.q_proj.weight",
     "attention.wk.weight": "self_attn.k_proj.weight",
@@ -95,5 +95,5 @@ def load_language_model(
     if audio_embedding_weight is None:
         raise RuntimeError(f"Voxtral-TTS checkpoint is missing {AUDIO_EMBEDDING_KEY}")
     else:
-        language_model.load_weights(audio_embedding_weight, strict=True)
+        language_model.load_weights(language_model_weights, strict=True)
         return audio_embedding_weight
