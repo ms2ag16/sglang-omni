@@ -1,18 +1,18 @@
 # SPDX-License-Identifier: Apache-2.0
 
+import glob
+import os
 import re
 
 import mlx.core as mx
 import torch
-import os
-import glob
-
-from transformers.models import ministral3
-
-from sglang_omni.models.voxtral_tts.voxtral_tts_audio_generation import interleave_qk_weight
-from sglang_omni.models.voxtral_tts.model_config import VoxtralTextConfig
+from mlx_lm.models import ministral3
 from safetensors import safe_open
 
+from sglang_omni.models.voxtral_tts.model_config import VoxtralTextConfig
+from sglang_omni.models.voxtral_tts.voxtral_tts_audio_generation import (
+    interleave_qk_weight,
+)
 
 LAYER_KEY_PATTERN = re.compile("^layers\.(\d+)\.(.+)$")
 LAYER_KEY_MAP: dict[str, str] = {
@@ -20,20 +20,22 @@ LAYER_KEY_MAP: dict[str, str] = {
     "attention.wk.weight": "self_attn.k_proj.weight",
     "attention.wv.weight": "self_attn.v_proj.weight",
     "attention.wo.weight": "self_attn.o_proj.weight",
-    "attention_norm.weight": "input_layernorn.weight",
+    "attention_norm.weight": "input_layernorm.weight",
     "feed_forward.w1.weight": "mlp.gate_proj.weight",
     "feed_forward.w2.weight": "mlp.down_proj.weight",
     "feed_forward.w3.weight": "mlp.up_proj.weight",
-    "ffn_norm.weight": "post_attention.layernorm.weight",
+    "ffn_norm.weight": "post_attention_layernorm.weight",
 }
 GLOBAL_KEY_MAP = {
     "norm.weight": "norm.weight",
-    "mm_audio_embeddings.tok_embeddings.weight" : "embed_tokens.weight",
+    "mm_audio_embeddings.tok_embeddings.weight": "embed_tokens.weight",
 }
 AUDIO_EMBEDDING_KEY = "mm_audio_embeddings.audio_codebook_embeddings.embeddings.weight"
 
+
 def to_mlx_bfloat16(tensor: torch.Tensor) -> mx.array:
     return mx.array(tensor.to(torch.float32).numpy()).astype(mx.bfloat16)
+
 
 def find_checkpoint_shards(checkpoint_dir: str) -> list[str]:
     shard_paths = sorted(glob.glob(os.path.join(checkpoint_dir, "*.safetensors")))
@@ -43,6 +45,7 @@ def find_checkpoint_shards(checkpoint_dir: str) -> list[str]:
         )
     else:
         return shard_paths
+
 
 def remap_language_model_key(checkpoint_key: str) -> str | None:
     """Map a checkpoint key to the mlx_lm parameter path, or None if not a backbone key."""
@@ -60,17 +63,19 @@ def remap_language_model_key(checkpoint_key: str) -> str | None:
 def load_language_model(
     checkpoint_dir: str,
     language_model: ministral3.LanguageModel,
-    text_config: VoxtralTextConfig
+    text_config: VoxtralTextConfig,
 ) -> mx.array:
-    """ Load backbone weights and return the audio codebook table, which lives outside the backbone."""
+    """Load backbone weights and return the audio codebook table, which lives outside the backbone."""
     language_model_weights = []
     audio_embedding_weight = None
     for shard_path in find_checkpoint_shards(checkpoint_dir):
-        with safe_open(shard_path, framework = 'pt', device='cpu') as shard:
+        with safe_open(shard_path, framework="pt", device="cpu") as shard:
             for checkpoint_key in shard.keys():
                 mlx_key = remap_language_model_key(checkpoint_key)
                 if checkpoint_key == AUDIO_EMBEDDING_KEY:
-                    audio_embedding_weight = to_mlx_bfloat16(shard.get_tensor(checkpoint_key))
+                    audio_embedding_weight = to_mlx_bfloat16(
+                        shard.get_tensor(checkpoint_key)
+                    )
                 elif mlx_key is None:
                     pass
                 else:
