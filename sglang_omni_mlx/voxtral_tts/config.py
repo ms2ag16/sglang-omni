@@ -56,6 +56,105 @@ class VoxtralConfig:
     checkpoint_directory: Path
 
 
+@dataclass(frozen=True, kw_only=True)
+class AudioTokenizerConfig:
+    sampling_rate: int
+    patch_size: int
+    patch_projection_kernel_size: int
+    semantic_codebook_size: int
+    semantic_dimension: int
+    acoustic_codebook_size: int
+    acoustic_dimension: int
+    causal: bool
+    sliding_window_size: int
+    half_attention_window_on_downsample: bool
+    encoder_convolution_strides: tuple[int, ...]
+    dimension: int
+    hidden_dimension: int
+    head_dimension: int
+    head_count: int
+    kv_head_count: int
+    qk_norm_epsilon: float
+    qk_norm: bool
+    use_biases: bool
+    norm_epsilon: float
+    layer_scale: bool
+    layer_scale_initial: float | None
+    transformer_lengths: tuple[int, ...]
+    convolution_kernels: tuple[int, ...]
+    convolution_strides: tuple[int, ...]
+
+    @classmethod
+    def from_voxtral_config(cls, config: VoxtralConfig) -> AudioTokenizerConfig:
+        values = config.audio_tokenizer
+        transformer_lengths = tuple(
+            int(value)
+            for value in str(
+                values.get("decoder_transformer_lengths_str", "2,2,2,2")
+            ).split(",")
+        )
+        convolution_kernels = tuple(
+            int(value)
+            for value in str(values.get("decoder_convs_kernels_str", "3,4,4,4")).split(
+                ","
+            )
+        )
+        convolution_strides = tuple(
+            int(value)
+            for value in str(values.get("decoder_convs_strides_str", "1,2,2,2")).split(
+                ","
+            )
+        )
+        encoder_convolution_strides = tuple(
+            int(value)
+            for value in str(values.get("encoder_convs_strides_str", "2,2,2,1")).split(
+                ","
+            )
+        )
+        if not (
+            len(transformer_lengths)
+            == len(convolution_kernels)
+            == len(convolution_strides)
+        ):
+            raise ValueError("Voxtral audio decoder configuration lengths differ")
+        else:
+            pass
+        layer_scale_initial_value = values.get("layer_scale_init")
+        if layer_scale_initial_value is None:
+            layer_scale_initial = None
+        else:
+            layer_scale_initial = float(layer_scale_initial_value)
+        return cls(
+            sampling_rate=int(values.get("sampling_rate", 24000)),
+            patch_size=int(values.get("pretransform_patch_size", 240)),
+            patch_projection_kernel_size=int(values.get("patch_proj_kernel_size", 7)),
+            semantic_codebook_size=int(values.get("semantic_codebook_size", 8192)),
+            semantic_dimension=int(values.get("semantic_dim", 256)),
+            acoustic_codebook_size=int(values.get("acoustic_codebook_size", 21)),
+            acoustic_dimension=int(values.get("acoustic_dim", 36)),
+            causal=bool(values.get("causal", True)),
+            sliding_window_size=int(values.get("attn_sliding_window_size", 16)),
+            half_attention_window_on_downsample=bool(
+                values.get("half_attn_window_upon_downsampling", True)
+            ),
+            encoder_convolution_strides=encoder_convolution_strides,
+            dimension=int(values.get("dim", 1024)),
+            hidden_dimension=int(values.get("hidden_dim", 4096)),
+            head_dimension=int(values.get("head_dim", 128)),
+            head_count=int(values.get("n_heads", 8)),
+            kv_head_count=int(values.get("n_kv_heads", 8)),
+            qk_norm_epsilon=float(values.get("qk_norm_eps", 1e-6)),
+            qk_norm=bool(values.get("qk_norm", True)),
+            use_biases=bool(values.get("use_biases", False)),
+            norm_epsilon=float(values.get("norm_eps", 1e-2)),
+            layer_scale=bool(values.get("layer_scale", True)),
+            layer_scale_initial=layer_scale_initial,
+            transformer_lengths=transformer_lengths,
+            convolution_kernels=convolution_kernels,
+            convolution_strides=convolution_strides,
+        )
+
+
 def read_voxtral_config(checkpoint_directory: Path) -> VoxtralConfig:
     params_path = checkpoint_directory / "params.json"
     params = json.loads(params_path.read_text())
@@ -100,7 +199,9 @@ def read_voxtral_config(checkpoint_directory: Path) -> VoxtralConfig:
             tied_embeddings=bool(params.get("tied_embeddings", True)),
         ),
         audio=AudioModelConfig(
-            semantic_codebook_size=int(audio_values.get("semantic_codebook_size", 8192)),
+            semantic_codebook_size=int(
+                audio_values.get("semantic_codebook_size", 8192)
+            ),
             acoustic_codebook_size=int(audio_values.get("acoustic_codebook_size", 21)),
             n_acoustic_codebook=int(audio_values.get("n_acoustic_codebook", 36)),
             acoustic_transformer=AcousticConfig(

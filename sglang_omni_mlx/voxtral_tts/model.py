@@ -5,12 +5,13 @@ from __future__ import annotations
 
 import glob
 import re
-from pathlib import Path
 
 import mlx.core as mx
 import mlx.nn as nn
 
 from sglang_omni_mlx.voxtral_tts.acoustic_head import FlowMatchingAudioTransformer
+from sglang_omni_mlx.voxtral_tts.audio_tokenizer import AudioTokenizerDecoder
+from sglang_omni_mlx.voxtral_tts.audio_tokenizer_loader import load_audio_tokenizer
 from sglang_omni_mlx.voxtral_tts.config import TextConfig, VoxtralConfig
 
 LAYER_KEY_PATTERN = re.compile(r"^layers\.(\d+)\.(.+)$")
@@ -56,11 +57,17 @@ class VoxtralKVCache:
             else:
                 extra_shape = (batch_size, head_count, capacity - self.offset, head_dim)
                 self.keys = mx.concatenate(
-                    [self.keys[..., : self.offset, :], mx.zeros(extra_shape, keys.dtype)],
+                    [
+                        self.keys[..., : self.offset, :],
+                        mx.zeros(extra_shape, keys.dtype),
+                    ],
                     axis=2,
                 )
                 self.values = mx.concatenate(
-                    [self.values[..., : self.offset, :], mx.zeros(extra_shape, values.dtype)],
+                    [
+                        self.values[..., : self.offset, :],
+                        mx.zeros(extra_shape, values.dtype),
+                    ],
                     axis=2,
                 )
         else:
@@ -74,8 +81,10 @@ class VoxtralKVCache:
 
 def interleave_qk_weight(weight: mx.array, head_count: int, head_dim: int) -> mx.array:
     half_head_dim = head_dim // 2
-    return weight.reshape(head_count, half_head_dim, 2, -1).transpose(0, 2, 1, 3).reshape(
-        head_count * head_dim, -1
+    return (
+        weight.reshape(head_count, half_head_dim, 2, -1)
+        .transpose(0, 2, 1, 3)
+        .reshape(head_count * head_dim, -1)
     )
 
 
@@ -98,8 +107,12 @@ class VoxtralAttention(nn.Module):
         self.kv_head_count = config.n_kv_heads
         self.head_dim = config.head_dim
         self.q_proj = nn.Linear(config.dim, self.head_count * self.head_dim, bias=False)
-        self.k_proj = nn.Linear(config.dim, self.kv_head_count * self.head_dim, bias=False)
-        self.v_proj = nn.Linear(config.dim, self.kv_head_count * self.head_dim, bias=False)
+        self.k_proj = nn.Linear(
+            config.dim, self.kv_head_count * self.head_dim, bias=False
+        )
+        self.v_proj = nn.Linear(
+            config.dim, self.kv_head_count * self.head_dim, bias=False
+        )
         self.o_proj = nn.Linear(self.head_count * self.head_dim, config.dim, bias=False)
         self.rope = nn.RoPE(self.head_dim, traditional=False, base=config.rope_theta)
 
@@ -124,7 +137,9 @@ class VoxtralAttention(nn.Module):
             scale=self.head_dim**-0.5,
             mask="causal" if token_count > 1 else None,
         )
-        return self.o_proj(attended.transpose(0, 2, 1, 3).reshape(batch_size, token_count, -1))
+        return self.o_proj(
+            attended.transpose(0, 2, 1, 3).reshape(batch_size, token_count, -1)
+        )
 
 
 class VoxtralTextLayer(nn.Module):
@@ -150,7 +165,9 @@ class VoxtralMLP(nn.Module):
         self.down_proj = nn.Linear(config.hidden_dim, config.dim, bias=False)
 
     def __call__(self, hidden_states: mx.array) -> mx.array:
-        return self.down_proj(nn.silu(self.gate_proj(hidden_states)) * self.up_proj(hidden_states))
+        return self.down_proj(
+            nn.silu(self.gate_proj(hidden_states)) * self.up_proj(hidden_states)
+        )
 
 
 class VoxtralTextModel(nn.Module):
@@ -183,12 +200,19 @@ class VoxtralMLXModel(nn.Module):
             ],
         ]
         self.audio_codebook_offsets = mx.array(
-            [0, *[sum(codebook_sizes[:index]) for index in range(1, len(codebook_sizes))]],
+            [
+                0,
+                *[
+                    sum(codebook_sizes[:index])
+                    for index in range(1, len(codebook_sizes))
+                ],
+            ],
             dtype=mx.int32,
         )
         self.audio_code_embeddings = nn.Embedding(
             128 * ((sum(codebook_sizes) + 127) // 128), config.text.dim
         )
+        self.audio_tokenizer: AudioTokenizerDecoder | None = None
 
     def new_caches(self) -> list[VoxtralKVCache]:
         return self.text_model.new_caches()
@@ -222,11 +246,17 @@ def load_voxtral_model(config: VoxtralConfig) -> VoxtralMLXModel:
                 else:
                     acoustic_weights.append((acoustic_key, checkpoint_weight))
             elif mlx_key is not None:
-                if checkpoint_key.startswith("layers.") and ".attention.wq." in checkpoint_key:
+                if (
+                    checkpoint_key.startswith("layers.")
+                    and ".attention.wq." in checkpoint_key
+                ):
                     checkpoint_weight = interleave_qk_weight(
                         checkpoint_weight, config.text.n_heads, config.text.head_dim
                     )
-                elif checkpoint_key.startswith("layers.") and ".attention.wk." in checkpoint_key:
+                elif (
+                    checkpoint_key.startswith("layers.")
+                    and ".attention.wk." in checkpoint_key
+                ):
                     checkpoint_weight = interleave_qk_weight(
                         checkpoint_weight, config.text.n_kv_heads, config.text.head_dim
                     )
@@ -247,5 +277,6 @@ def load_voxtral_model(config: VoxtralConfig) -> VoxtralMLXModel:
     else:
         pass
     model.audio_code_embeddings.weight = audio_code_embeddings
+    model.audio_tokenizer = load_audio_tokenizer(config)
     mx.eval(model.parameters())
     return model

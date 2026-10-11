@@ -54,10 +54,16 @@ class BidirectionalAttention(nn.Module):
         self.kv_head_count = config.n_kv_heads
         self.head_dim = config.head_dim
         self.kv_repeats = self.head_count // self.kv_head_count
-        self.wq = nn.Linear(config.dim, self.head_count * self.head_dim, bias=config.use_biases)
+        self.wq = nn.Linear(
+            config.dim, self.head_count * self.head_dim, bias=config.use_biases
+        )
         self.wk = nn.Linear(config.dim, self.kv_head_count * self.head_dim, bias=False)
-        self.wv = nn.Linear(config.dim, self.kv_head_count * self.head_dim, bias=config.use_biases)
-        self.wo = nn.Linear(self.head_count * self.head_dim, config.dim, bias=config.use_biases)
+        self.wv = nn.Linear(
+            config.dim, self.kv_head_count * self.head_dim, bias=config.use_biases
+        )
+        self.wo = nn.Linear(
+            self.head_count * self.head_dim, config.dim, bias=config.use_biases
+        )
 
     def __call__(self, hidden_states: mx.array) -> mx.array:
         batch_size, token_count, _ = hidden_states.shape
@@ -196,14 +202,20 @@ class FlowMatchingAudioTransformer(nn.Module):
         sampled = mx.clip(sampled, -1.0, 1.0)
         quantized = mx.round((sampled + 1.0) * 0.5 * (self.acoustic_levels - 1))
         acoustic_codes = quantized.astype(mx.int32) + SPECIAL_TOKEN_COUNT
-        return mx.where(should_decode[:, None], acoustic_codes, EMPTY_AUDIO_TOKEN_ID + SPECIAL_TOKEN_COUNT)
+        return mx.where(
+            should_decode[:, None],
+            acoustic_codes,
+            EMPTY_AUDIO_TOKEN_ID + SPECIAL_TOKEN_COUNT,
+        )
 
     def __call__(self, language_hidden_states: mx.array) -> mx.array:
         semantic_logits = self.semantic_codebook_output(language_hidden_states).astype(
             mx.float32
         )
         semantic_logits[:, EMPTY_AUDIO_TOKEN_ID] = -float("inf")
-        semantic_logits[:, self.config.semantic_codebook_size + SPECIAL_TOKEN_COUNT :] = -float("inf")
+        semantic_logits[
+            :, self.config.semantic_codebook_size + SPECIAL_TOKEN_COUNT :
+        ] = -float("inf")
         semantic_codes = mx.argmax(semantic_logits, axis=-1)
         acoustic_codes = self.decode_one_frame(semantic_codes, language_hidden_states)
         return mx.concatenate([semantic_codes[:, None], acoustic_codes], axis=1)
