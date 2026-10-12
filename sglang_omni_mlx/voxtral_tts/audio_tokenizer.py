@@ -11,6 +11,7 @@ import mlx.nn as nn
 from sglang_omni_mlx.voxtral_tts.config import AudioTokenizerConfig
 
 SEMANTIC_CODEBOOK_EPSILON = 1e-5
+ATTENTION_QUERY_CHUNK_SIZE = 1024
 
 
 class CausalConv1d(nn.Module):
@@ -140,34 +141,52 @@ class AudioAttention(nn.Module):
             values = mx.repeat(values, repeats, axis=1)
         else:
             pass
-        positions = mx.arange(sequence_length)
         alibi_slopes = mx.array(self.get_alibi_slopes(self.head_count))
-        relative_positions = positions[None, :] - positions[:, None]
-        attention_bias = alibi_slopes.astype(hidden_states.dtype)[
-            :, None, None
-        ] * relative_positions[None, :, :].astype(hidden_states.dtype)
         if self.config.causal:
-            attention_bias = mx.where(
-                relative_positions[None, :, :] > 0,
-                -float("inf"),
-                attention_bias,
-            )
-            right_window = 0
+            right_window_tokens = 0
         else:
-            right_window = self.window_size
-        outside_window = (relative_positions < -self.window_size) | (
-            relative_positions > right_window
-        )
-        attention_bias = mx.where(
-            outside_window[None, None, :, :], -float("inf"), attention_bias
-        )
-        attended = mx.fast.scaled_dot_product_attention(
-            queries,
-            keys,
-            values,
-            scale=self.head_dimension**-0.5,
-            mask=attention_bias[None, :, :, :],
-        )
+            right_window_tokens = self.window_size
+        attention_outputs: list[mx.array] = []
+        for query_start_position in range(
+            0, sequence_length, ATTENTION_QUERY_CHUNK_SIZE
+        ):
+            query_end_position = min(
+                query_start_position + ATTENTION_QUERY_CHUNK_SIZE, sequence_length
+            )
+            key_start_position = max(0, query_start_position - self.window_size)
+            key_end_position = min(
+                sequence_length, query_end_position + right_window_tokens
+            )
+            query_positions = mx.arange(query_start_position, query_end_position)
+            key_positions = mx.arange(key_start_position, key_end_position)
+            relative_positions = key_positions[None, :] - query_positions[:, None]
+            attention_bias = alibi_slopes.astype(hidden_states.dtype)[
+                :, None, None
+            ] * relative_positions[None, :, :].astype(hidden_states.dtype)
+            if self.config.causal:
+                attention_bias = mx.where(
+                    relative_positions[None, :, :] > 0,
+                    -float("inf"),
+                    attention_bias,
+                )
+            else:
+                pass
+            outside_window = (relative_positions < -self.window_size) | (
+                relative_positions > right_window_tokens
+            )
+            attention_bias = mx.where(
+                outside_window[None, :, :], -float("inf"), attention_bias
+            )
+            attention_outputs.append(
+                mx.fast.scaled_dot_product_attention(
+                    queries[:, :, query_start_position:query_end_position, :],
+                    keys[:, :, key_start_position:key_end_position, :],
+                    values[:, :, key_start_position:key_end_position, :],
+                    scale=self.head_dimension**-0.5,
+                    mask=attention_bias[None, :, :, :],
+                )
+            )
+        attended = mx.concatenate(attention_outputs, axis=2)
         attended = attended.transpose(0, 2, 1, 3).reshape(
             batch_size, sequence_length, self.head_count * self.head_dimension
         )
@@ -286,10 +305,9 @@ class AudioTokenizerDecoder(nn.Module):
                     pass
             else:
                 pass
-        self.semantic_embedding_sum = mx.zeros(
+        self.semantic_embedding = mx.zeros(
             (config.semantic_codebook_size, config.semantic_dimension)
         )
-        self.semantic_cluster_usage = mx.ones((config.semantic_codebook_size,))
         self.output_proj = CausalConv1d(
             config.dimension,
             config.patch_size,
@@ -305,11 +323,8 @@ class AudioTokenizerDecoder(nn.Module):
 
     def __call__(self, audio_codes: mx.array) -> mx.array:
         semantic_codes = audio_codes[:, 0, :]
-        semantic_embedding = self.semantic_embedding_sum / mx.maximum(
-            self.semantic_cluster_usage[:, None], SEMANTIC_CODEBOOK_EPSILON
-        )
         decoder_dtype = self.output_proj.conv.weight.dtype
-        semantic_features = semantic_embedding[semantic_codes].transpose(0, 2, 1)
+        semantic_features = self.semantic_embedding[semantic_codes].transpose(0, 2, 1)
         semantic_features = semantic_features.astype(decoder_dtype)
         acoustic_features = (
             audio_codes[:, 1:, :].astype(mx.float32)
@@ -321,7 +336,7 @@ class AudioTokenizerDecoder(nn.Module):
         for decoder_block in self.decoder_blocks:
             hidden_states = decoder_block(hidden_states)
         hidden_states = self.output_proj(hidden_states)
-        batch_size, _, frame_count = hidden_states.shape
+        batch_size, frame_count, _ = hidden_states.shape
         return hidden_states.reshape(
             batch_size, 1, frame_count * self.config.patch_size
         )
