@@ -8,8 +8,14 @@ import re
 
 import mlx.core as mx
 import mlx.nn as nn
+from mlx_lm.models.cache import KVCache
 
-from sglang_omni_mlx.voxtral_tts.acoustic_head import FlowMatchingAudioTransformer
+from sglang_omni_mlx.voxtral_tts.acoustic_head import (
+    FlowMatchingAudioTransformer,
+    SEMANTIC_VOCAB_ALIGNMENT,
+    SPECIAL_TOKEN_COUNT,
+    padded_size,
+)
 from sglang_omni_mlx.voxtral_tts.audio_tokenizer import AudioTokenizerDecoder
 from sglang_omni_mlx.voxtral_tts.audio_tokenizer_loader import load_audio_tokenizer
 from sglang_omni_mlx.voxtral_tts.config import TextConfig, VoxtralConfig
@@ -31,52 +37,6 @@ GLOBAL_KEY_MAP = {
     "mm_audio_embeddings.tok_embeddings.weight": "embed_tokens.weight",
 }
 AUDIO_EMBEDDING_KEY = "mm_audio_embeddings.audio_codebook_embeddings.embeddings.weight"
-KV_CACHE_STEP_TOKENS = 256
-
-
-class VoxtralKVCache:
-    def __init__(self) -> None:
-        self.keys: mx.array | None = None
-        self.values: mx.array | None = None
-        self.offset = 0
-
-    def update_and_fetch(
-        self, keys: mx.array, values: mx.array
-    ) -> tuple[mx.array, mx.array]:
-        token_count = keys.shape[2]
-        end_offset = self.offset + token_count
-        if self.keys is None or end_offset > self.keys.shape[2]:
-            batch_size, head_count, _, head_dim = keys.shape
-            capacity = KV_CACHE_STEP_TOKENS * (
-                (end_offset + KV_CACHE_STEP_TOKENS - 1) // KV_CACHE_STEP_TOKENS
-            )
-            grown_shape = (batch_size, head_count, capacity, head_dim)
-            if self.keys is None:
-                self.keys = mx.zeros(grown_shape, dtype=keys.dtype)
-                self.values = mx.zeros(grown_shape, dtype=values.dtype)
-            else:
-                extra_shape = (batch_size, head_count, capacity - self.offset, head_dim)
-                self.keys = mx.concatenate(
-                    [
-                        self.keys[..., : self.offset, :],
-                        mx.zeros(extra_shape, keys.dtype),
-                    ],
-                    axis=2,
-                )
-                self.values = mx.concatenate(
-                    [
-                        self.values[..., : self.offset, :],
-                        mx.zeros(extra_shape, values.dtype),
-                    ],
-                    axis=2,
-                )
-        else:
-            pass
-        self.keys[..., self.offset : end_offset, :] = keys
-        self.values[..., self.offset : end_offset, :] = values
-        assert self.keys is not None and self.values is not None
-        self.offset = end_offset
-        return self.keys[..., :end_offset, :], self.values[..., :end_offset, :]
 
 
 def interleave_qk_weight(weight: mx.array, head_count: int, head_dim: int) -> mx.array:
@@ -116,7 +76,7 @@ class VoxtralAttention(nn.Module):
         self.o_proj = nn.Linear(self.head_count * self.head_dim, config.dim, bias=False)
         self.rope = nn.RoPE(self.head_dim, traditional=False, base=config.rope_theta)
 
-    def __call__(self, hidden_states: mx.array, cache: VoxtralKVCache) -> mx.array:
+    def __call__(self, hidden_states: mx.array, cache: KVCache) -> mx.array:
         batch_size, token_count, _ = hidden_states.shape
         queries = self.q_proj(hidden_states).reshape(
             batch_size, token_count, self.head_count, self.head_dim
@@ -150,7 +110,7 @@ class VoxtralTextLayer(nn.Module):
         self.post_attention_layernorm = nn.RMSNorm(config.dim, eps=config.norm_eps)
         self.mlp = VoxtralMLP(config)
 
-    def __call__(self, hidden_states: mx.array, cache: VoxtralKVCache) -> mx.array:
+    def __call__(self, hidden_states: mx.array, cache: KVCache) -> mx.array:
         hidden_states = hidden_states + self.self_attn(
             self.input_layernorm(hidden_states), cache
         )
@@ -177,10 +137,10 @@ class VoxtralTextModel(nn.Module):
         self.layers = [VoxtralTextLayer(config) for _ in range(config.n_layers)]
         self.norm = nn.RMSNorm(config.dim, eps=config.norm_eps)
 
-    def new_caches(self) -> list[VoxtralKVCache]:
-        return [VoxtralKVCache() for _ in self.layers]
+    def new_caches(self) -> list[KVCache]:
+        return [KVCache() for _ in self.layers]
 
-    def __call__(self, embeddings: mx.array, caches: list[VoxtralKVCache]) -> mx.array:
+    def __call__(self, embeddings: mx.array, caches: list[KVCache]) -> mx.array:
         hidden_states = embeddings
         for layer, cache in zip(self.layers, caches):
             hidden_states = layer(hidden_states, cache)
@@ -193,9 +153,9 @@ class VoxtralMLXModel(nn.Module):
         self.text_model = VoxtralTextModel(config.text)
         self.acoustic_head = FlowMatchingAudioTransformer(config.audio)
         codebook_sizes = [
-            config.audio.semantic_codebook_size + 2,
+            config.audio.semantic_codebook_size + SPECIAL_TOKEN_COUNT,
             *[
-                config.audio.acoustic_codebook_size + 2
+                config.audio.acoustic_codebook_size + SPECIAL_TOKEN_COUNT
                 for _ in range(config.audio.n_acoustic_codebook)
             ],
         ]
@@ -210,11 +170,10 @@ class VoxtralMLXModel(nn.Module):
             dtype=mx.int32,
         )
         self.audio_code_embeddings = nn.Embedding(
-            128 * ((sum(codebook_sizes) + 127) // 128), config.text.dim
-        )
+            padded_size(sum(codebook_sizes), SEMANTIC_VOCAB_ALIGNMENT), config.text.dim)
         self.audio_tokenizer: AudioTokenizerDecoder | None = None
 
-    def new_caches(self) -> list[VoxtralKVCache]:
+    def new_caches(self) -> list[KVCache]:
         return self.text_model.new_caches()
 
     def embed_audio_codes(self, audio_codes: mx.array) -> mx.array:
@@ -233,11 +192,14 @@ def load_voxtral_model(config: VoxtralConfig) -> VoxtralMLXModel:
     model = VoxtralMLXModel(config)
     text_weights: list[tuple[str, mx.array]] = []
     acoustic_weights: list[tuple[str, mx.array]] = []
+    audio_tokenizer_weights: dict[str, mx.array] = {}
     audio_code_embeddings: mx.array | None = None
     for shard_path in shard_paths:
         for checkpoint_key, checkpoint_weight in mx.load(shard_path).items():
             mlx_key = remap_text_weight_key(checkpoint_key)
-            if checkpoint_key == AUDIO_EMBEDDING_KEY:
+            if checkpoint_key.startswith("audio_tokenizer."):
+                audio_tokenizer_weights[checkpoint_key] = checkpoint_weight
+            elif checkpoint_key == AUDIO_EMBEDDING_KEY:
                 audio_code_embeddings = checkpoint_weight
             elif checkpoint_key.startswith("acoustic_transformer."):
                 acoustic_key = checkpoint_key.removeprefix("acoustic_transformer.")
@@ -277,6 +239,6 @@ def load_voxtral_model(config: VoxtralConfig) -> VoxtralMLXModel:
     else:
         pass
     model.audio_code_embeddings.weight = audio_code_embeddings
-    model.audio_tokenizer = load_audio_tokenizer(config)
+    model.audio_tokenizer = load_audio_tokenizer(config, audio_tokenizer_weights)
     mx.eval(model.parameters())
     return model

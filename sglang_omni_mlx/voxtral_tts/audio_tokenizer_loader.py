@@ -6,29 +6,29 @@ from __future__ import annotations
 import mlx.core as mx
 
 from sglang_omni_mlx.voxtral_tts.audio_tokenizer import (
+    SEMANTIC_CODEBOOK_EPSILON,
     AudioTokenizerDecoder,
     CausalConvTranspose1d,
 )
 from sglang_omni_mlx.voxtral_tts.config import AudioTokenizerConfig, VoxtralConfig
 
+SEMANTIC_CODEBOOK_PREFIX = "audio_tokenizer.quantizer.semantic_codebook."
 
-def load_audio_tokenizer(config: VoxtralConfig) -> AudioTokenizerDecoder:
+
+def load_audio_tokenizer(
+    config: VoxtralConfig, source_weights: dict[str, mx.array]
+) -> AudioTokenizerDecoder:
     tokenizer = AudioTokenizerDecoder(AudioTokenizerConfig.from_voxtral_config(config))
-    source_weights: dict[str, mx.array] = {}
-    for shard_path in sorted(config.checkpoint_directory.glob("*.safetensors")):
-        for checkpoint_key, checkpoint_weight in mx.load(str(shard_path)).items():
-            if checkpoint_key.startswith("audio_tokenizer."):
-                source_weights[checkpoint_key] = checkpoint_weight
-            else:
-                pass
     checkpoint_weights: dict[str, mx.array] = {}
+    checkpoint_weights["semantic_embedding"] = source_weights[
+        f"{SEMANTIC_CODEBOOK_PREFIX}embedding_sum"
+    ] / mx.maximum(
+        source_weights[f"{SEMANTIC_CODEBOOK_PREFIX}cluster_usage"][:, None],
+        SEMANTIC_CODEBOOK_EPSILON,
+    )
     for checkpoint_key, checkpoint_weight in source_weights.items():
         decoder_key = checkpoint_key.removeprefix("audio_tokenizer.")
-        if decoder_key == "quantizer.semantic_codebook.embedding_sum":
-            checkpoint_weights["semantic_embedding_sum"] = checkpoint_weight
-        elif decoder_key == "quantizer.semantic_codebook.cluster_usage":
-            checkpoint_weights["semantic_cluster_usage"] = checkpoint_weight
-        elif decoder_key.endswith(".parametrizations.weight.original0"):
+        if decoder_key.endswith(".parametrizations.weight.original0"):
             continue
         elif decoder_key.endswith(".parametrizations.weight.original1"):
             module_key = decoder_key.removesuffix(".parametrizations.weight.original1")

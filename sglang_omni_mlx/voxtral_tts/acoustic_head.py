@@ -13,8 +13,8 @@ CLASSIFIER_FREE_GUIDANCE_ALPHA = 1.2
 NOISE_SCALE = 1.0
 SEMANTIC_VOCAB_ALIGNMENT = 128
 SPECIAL_TOKEN_COUNT = 2
-END_AUDIO_TOKEN_ID = 0
-EMPTY_AUDIO_TOKEN_ID = 1
+EMPTY_AUDIO_TOKEN_ID = 0
+END_AUDIO_TOKEN_ID = 1
 
 
 def padded_size(codebook_size: int, alignment: int) -> int:
@@ -116,7 +116,6 @@ class FlowMatchingAudioTransformer(nn.Module):
         self.config = config
         self.acoustic_levels = config.acoustic_codebook_size
         self.acoustic_codebook_count = config.n_acoustic_codebook
-        self.sigma = acoustic_config.sigma
         self.time_embedding = TimeEmbedding(acoustic_config.dim)
         self.input_projection = nn.Linear(
             self.acoustic_codebook_count, acoustic_config.dim, bias=False

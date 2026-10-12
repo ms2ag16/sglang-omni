@@ -7,6 +7,8 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+DEFAULT_ACOUSTIC_NORM_EPSILON = 1e-5
+DEFAULT_ENCODER_CONVOLUTION_STRIDES_TEXT = "2, 2, 2, 1"
 
 @dataclass(frozen=True, kw_only=True)
 class TextConfig:
@@ -19,8 +21,6 @@ class TextConfig:
     vocab_size: int
     rope_theta: float
     norm_eps: float
-    max_seq_len: int
-    tied_embeddings: bool
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -34,7 +34,6 @@ class AcousticConfig:
     n_kv_heads: int
     use_biases: bool
     norm_eps: float
-    sigma: float
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -44,7 +43,6 @@ class AudioModelConfig:
     n_acoustic_codebook: int
     acoustic_transformer: AcousticConfig
     audio_token_id: int
-    begin_audio_token_id: int
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -89,65 +87,60 @@ class AudioTokenizerConfig:
         values = config.audio_tokenizer
         transformer_lengths = tuple(
             int(value)
-            for value in str(
-                values.get("decoder_transformer_lengths_str", "2,2,2,2")
-            ).split(",")
+            for value in str(values["decoder_transformer_lengths_str"]).split(",")
         )
         convolution_kernels = tuple(
             int(value)
-            for value in str(values.get("decoder_convs_kernels_str", "3,4,4,4")).split(
-                ","
-            )
+            for value in str(values["decoder_convs_kernels_str"]).split(",")
         )
         convolution_strides = tuple(
             int(value)
-            for value in str(values.get("decoder_convs_strides_str", "1,2,2,2")).split(
-                ","
-            )
+            for value in str(values["decoder_convs_strides_str"]).split(",")
         )
         encoder_convolution_strides = tuple(
             int(value)
-            for value in str(values.get("encoder_convs_strides_str", "2,2,2,1")).split(
-                ","
-            )
+            for value in str(
+                values.get("encoder_convs_strides_str", DEFAULT_ENCODER_CONVOLUTION_STRIDES_TEXT)
+            ).split(",")
         )
         if not (
             len(transformer_lengths)
             == len(convolution_kernels)
             == len(convolution_strides)
+            == len(encoder_convolution_strides)
         ):
-            raise ValueError("Voxtral audio decoder configuration lengths differ")
+            raise ValueError("Voxtral audio tokenizer configuration lengths differ")
         else:
             pass
-        layer_scale_initial_value = values.get("layer_scale_init")
+        layer_scale_initial_value = values["layer_scale_init"]
         if layer_scale_initial_value is None:
             layer_scale_initial = None
         else:
             layer_scale_initial = float(layer_scale_initial_value)
         return cls(
-            sampling_rate=int(values.get("sampling_rate", 24000)),
-            patch_size=int(values.get("pretransform_patch_size", 240)),
-            patch_projection_kernel_size=int(values.get("patch_proj_kernel_size", 7)),
-            semantic_codebook_size=int(values.get("semantic_codebook_size", 8192)),
-            semantic_dimension=int(values.get("semantic_dim", 256)),
-            acoustic_codebook_size=int(values.get("acoustic_codebook_size", 21)),
-            acoustic_dimension=int(values.get("acoustic_dim", 36)),
-            causal=bool(values.get("causal", True)),
-            sliding_window_size=int(values.get("attn_sliding_window_size", 16)),
+            sampling_rate=int(values["sampling_rate"]),
+            patch_size=int(values["pretransform_patch_size"]),
+            patch_projection_kernel_size=int(values["patch_proj_kernel_size"]),
+            semantic_codebook_size=int(values["semantic_codebook_size"]),
+            semantic_dimension=int(values["semantic_dim"]),
+            acoustic_codebook_size=int(values["acoustic_codebook_size"]),
+            acoustic_dimension=int(values["acoustic_dim"]),
+            causal=bool(values["causal"]),
+            sliding_window_size=int(values["attn_sliding_window_size"]),
             half_attention_window_on_downsample=bool(
-                values.get("half_attn_window_upon_downsampling", True)
+                values["half_attn_window_upon_downsampling"]
             ),
             encoder_convolution_strides=encoder_convolution_strides,
-            dimension=int(values.get("dim", 1024)),
-            hidden_dimension=int(values.get("hidden_dim", 4096)),
-            head_dimension=int(values.get("head_dim", 128)),
-            head_count=int(values.get("n_heads", 8)),
-            kv_head_count=int(values.get("n_kv_heads", 8)),
-            qk_norm_epsilon=float(values.get("qk_norm_eps", 1e-6)),
-            qk_norm=bool(values.get("qk_norm", True)),
-            use_biases=bool(values.get("use_biases", False)),
-            norm_epsilon=float(values.get("norm_eps", 1e-2)),
-            layer_scale=bool(values.get("layer_scale", True)),
+            dimension=int(values["dim"]),
+            hidden_dimension=int(values["hidden_dim"]),
+            head_dimension=int(values["head_dim"]),
+            head_count=int(values["n_heads"]),
+            kv_head_count=int(values["n_kv_heads"]),
+            qk_norm_epsilon=float(values["qk_norm_eps"]),
+            qk_norm=bool(values["qk_norm"]),
+            use_biases=bool(values["use_biases"]),
+            norm_epsilon=float(values["norm_eps"]),
+            layer_scale=bool(values["layer_scale"]),
             layer_scale_initial=layer_scale_initial,
             transformer_lengths=transformer_lengths,
             convolution_kernels=convolution_kernels,
@@ -162,62 +155,58 @@ def read_voxtral_config(checkpoint_directory: Path) -> VoxtralConfig:
         raise ValueError(f"Voxtral params must be a JSON object: {params_path}")
     else:
         pass
-    multimodal = params.get("multimodal", {})
+    multimodal = params["multimodal"]
     if not isinstance(multimodal, dict):
         raise ValueError("Voxtral params.multimodal must be an object")
     else:
         pass
-    audio_values = multimodal.get("audio_model_args", {})
-    tokenizer_values = multimodal.get("audio_tokenizer_args", {})
+    audio_values = multimodal["audio_model_args"]
+    tokenizer_values = multimodal["audio_tokenizer_args"]
     if not isinstance(audio_values, dict) or not isinstance(tokenizer_values, dict):
         raise ValueError("Voxtral audio configuration values must be objects")
     else:
         pass
-    acoustic_values = audio_values.get("acoustic_transformer_args", {})
+    acoustic_values = audio_values["acoustic_transformer_args"]
     if not isinstance(acoustic_values, dict):
         raise ValueError("Voxtral acoustic_transformer_args must be an object")
     else:
         pass
     tokenizer_values = tokenizer_values.copy()
-    voice_values = tokenizer_values.pop("voice", {})
+    voice_values = tokenizer_values.pop("voice")
     if not isinstance(voice_values, dict):
         raise ValueError("Voxtral audio_tokenizer_args.voice must be an object")
     else:
         pass
     return VoxtralConfig(
         text=TextConfig(
-            dim=int(params.get("dim", 3072)),
-            n_layers=int(params.get("n_layers", 26)),
-            head_dim=int(params.get("head_dim", 128)),
-            hidden_dim=int(params.get("hidden_dim", 9216)),
-            n_heads=int(params.get("n_heads", 32)),
-            n_kv_heads=int(params.get("n_kv_heads", 8)),
-            vocab_size=int(params.get("vocab_size", 131072)),
-            rope_theta=float(params.get("rope_theta", 1_000_000.0)),
-            norm_eps=float(params.get("norm_eps", 1e-5)),
-            max_seq_len=int(params.get("max_seq_len", 65536)),
-            tied_embeddings=bool(params.get("tied_embeddings", True)),
+            dim=int(params["dim"]),
+            n_layers=int(params["n_layers"]),
+            head_dim=int(params["head_dim"]),
+            hidden_dim=int(params["hidden_dim"]),
+            n_heads=int(params["n_heads"]),
+            n_kv_heads=int(params["n_kv_heads"]),
+            vocab_size=int(params["vocab_size"]),
+            rope_theta=float(params["rope_theta"]),
+            norm_eps=float(params["norm_eps"]),
         ),
         audio=AudioModelConfig(
             semantic_codebook_size=int(
-                audio_values.get("semantic_codebook_size", 8192)
+                audio_values["semantic_codebook_size"]
             ),
-            acoustic_codebook_size=int(audio_values.get("acoustic_codebook_size", 21)),
-            n_acoustic_codebook=int(audio_values.get("n_acoustic_codebook", 36)),
+            acoustic_codebook_size=int(audio_values["acoustic_codebook_size"]),
+            n_acoustic_codebook=int(audio_values["n_acoustic_codebook"]),
             acoustic_transformer=AcousticConfig(
-                input_dim=int(acoustic_values.get("input_dim", 3072)),
-                dim=int(acoustic_values.get("dim", 768)),
-                n_layers=int(acoustic_values.get("n_layers", 3)),
-                head_dim=int(acoustic_values.get("head_dim", 128)),
-                hidden_dim=int(acoustic_values.get("hidden_dim", 2048)),
-                n_heads=int(acoustic_values.get("n_heads", 6)),
-                n_kv_heads=int(acoustic_values.get("n_kv_heads", 2)),
-                use_biases=bool(acoustic_values.get("use_biases", False)),
-                norm_eps=float(acoustic_values.get("norm_eps", 1e-5)),
-                sigma=float(acoustic_values.get("sigma", 1e-5)),
+                input_dim=int(acoustic_values["input_dim"]),
+                dim=int(acoustic_values["dim"]),
+                n_layers=int(acoustic_values["n_layers"]),
+                head_dim=int(acoustic_values["head_dim"]),
+                hidden_dim=int(acoustic_values["hidden_dim"]),
+                n_heads=int(acoustic_values["n_heads"]),
+                n_kv_heads=int(acoustic_values["n_kv_heads"]),
+                use_biases=bool(acoustic_values["use_biases"]),
+                norm_eps=float(acoustic_values.get("norm_eps", DEFAULT_ACOUSTIC_NORM_EPSILON)),
             ),
-            audio_token_id=int(audio_values.get("audio_token_id", 24)),
-            begin_audio_token_id=int(audio_values.get("begin_audio_token_id", 25)),
+            audio_token_id=int(audio_values["audio_token_id"]),
         ),
         audio_tokenizer=dict(tokenizer_values),
         voices={str(name): int(token_id) for name, token_id in voice_values.items()},
