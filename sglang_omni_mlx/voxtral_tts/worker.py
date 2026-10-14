@@ -89,10 +89,6 @@ class VoxtralTTSWorker:
             self.queued_requests -= 1
             self.running_requests += 1
         try:
-            if voice not in self.voice_embeddings:
-                raise ValueError(f"Unknown Voxtral voice: {voice}")
-            else:
-                pass
             prompt_token_ids = self.tokenizer.encode(text, voice)
             synthesizer = VoxtralSynthesizer(
                 self.model,

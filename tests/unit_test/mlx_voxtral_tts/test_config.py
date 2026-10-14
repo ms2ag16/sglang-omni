@@ -143,3 +143,14 @@ def test_audio_tokenizer_config_rejects_missing_required_fields(
 
     with pytest.raises(KeyError, match=config_key_path[-1]):
         AudioTokenizerConfig.from_voxtral_config(config)
+
+
+def test_audio_tokenizer_config_rejects_mismatched_decoder_stage_counts(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "params.json").write_text(json.dumps(PARAMS))
+    config = read_voxtral_config(tmp_path)
+    config.audio_tokenizer["decoder_convs_strides_str"] = "1,2"
+
+    with pytest.raises(ValueError, match="configuration lengths differ"):
+        AudioTokenizerConfig.from_voxtral_config(config)
