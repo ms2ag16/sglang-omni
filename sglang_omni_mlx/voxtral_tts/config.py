@@ -10,6 +10,7 @@ from pathlib import Path
 DEFAULT_ACOUSTIC_NORM_EPSILON = 1e-5
 DEFAULT_ENCODER_CONVOLUTION_STRIDES_TEXT = "2, 2, 2, 1"
 
+
 @dataclass(frozen=True, kw_only=True)
 class TextConfig:
     dim: int
@@ -90,17 +91,18 @@ class AudioTokenizerConfig:
             for value in str(values["decoder_transformer_lengths_str"]).split(",")
         )
         convolution_kernels = tuple(
-            int(value)
-            for value in str(values["decoder_convs_kernels_str"]).split(",")
+            int(value) for value in str(values["decoder_convs_kernels_str"]).split(",")
         )
         convolution_strides = tuple(
-            int(value)
-            for value in str(values["decoder_convs_strides_str"]).split(",")
+            int(value) for value in str(values["decoder_convs_strides_str"]).split(",")
         )
         encoder_convolution_strides = tuple(
             int(value)
             for value in str(
-                values.get("encoder_convs_strides_str", DEFAULT_ENCODER_CONVOLUTION_STRIDES_TEXT)
+                values.get(
+                    "encoder_convs_strides_str",
+                    DEFAULT_ENCODER_CONVOLUTION_STRIDES_TEXT,
+                )
             ).split(",")
         )
         if not (
@@ -190,9 +192,7 @@ def read_voxtral_config(checkpoint_directory: Path) -> VoxtralConfig:
             norm_eps=float(params["norm_eps"]),
         ),
         audio=AudioModelConfig(
-            semantic_codebook_size=int(
-                audio_values["semantic_codebook_size"]
-            ),
+            semantic_codebook_size=int(audio_values["semantic_codebook_size"]),
             acoustic_codebook_size=int(audio_values["acoustic_codebook_size"]),
             n_acoustic_codebook=int(audio_values["n_acoustic_codebook"]),
             acoustic_transformer=AcousticConfig(
@@ -204,7 +204,9 @@ def read_voxtral_config(checkpoint_directory: Path) -> VoxtralConfig:
                 n_heads=int(acoustic_values["n_heads"]),
                 n_kv_heads=int(acoustic_values["n_kv_heads"]),
                 use_biases=bool(acoustic_values["use_biases"]),
-                norm_eps=float(acoustic_values.get("norm_eps", DEFAULT_ACOUSTIC_NORM_EPSILON)),
+                norm_eps=float(
+                    acoustic_values.get("norm_eps", DEFAULT_ACOUSTIC_NORM_EPSILON)
+                ),
             ),
             audio_token_id=int(audio_values["audio_token_id"]),
         ),

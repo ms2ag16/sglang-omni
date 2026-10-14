@@ -62,12 +62,16 @@ def test_chunked_audio_attention_matches_dense_attention(causal: bool) -> None:
     queries = attention.wq(hidden_states)
     keys = attention.wk(hidden_states)
     values = attention.wv(hidden_states)
-    queries = attention.q_norm(queries).reshape(
-        1, sequence_length, config.head_count, config.head_dimension
-    ).transpose(0, 2, 1, 3)
-    keys = attention.k_norm(keys).reshape(
-        1, sequence_length, config.kv_head_count, config.head_dimension
-    ).transpose(0, 2, 1, 3)
+    queries = (
+        attention.q_norm(queries)
+        .reshape(1, sequence_length, config.head_count, config.head_dimension)
+        .transpose(0, 2, 1, 3)
+    )
+    keys = (
+        attention.k_norm(keys)
+        .reshape(1, sequence_length, config.kv_head_count, config.head_dimension)
+        .transpose(0, 2, 1, 3)
+    )
     values = values.reshape(
         1, sequence_length, config.kv_head_count, config.head_dimension
     ).transpose(0, 2, 1, 3)
@@ -91,9 +95,7 @@ def test_chunked_audio_attention_matches_dense_attention(causal: bool) -> None:
     outside_window = (relative_positions < -attention.window_size) | (
         relative_positions > right_window_tokens
     )
-    attention_bias = mx.where(
-        outside_window[None, :, :], -float("inf"), attention_bias
-    )
+    attention_bias = mx.where(outside_window[None, :, :], -float("inf"), attention_bias)
     dense_attended = mx.fast.scaled_dot_product_attention(
         queries,
         keys,
