@@ -15,10 +15,7 @@ import numpy as np
 from sglang_omni_mlx.voxtral_tts.audio import encode_wav
 from sglang_omni_mlx.voxtral_tts.config import VoxtralConfig, read_voxtral_config
 from sglang_omni_mlx.voxtral_tts.model import VoxtralMLXModel, load_voxtral_model
-from sglang_omni_mlx.voxtral_tts.synthesis import (
-    AudioFinishReason,
-    VoxtralSynthesizer,
-)
+from sglang_omni_mlx.voxtral_tts.synthesis import AudioFinishReason, VoxtralSynthesizer
 from sglang_omni_mlx.voxtral_tts.tokenizer import (
     VoxtralSpeechTokenizer,
     load_voice_embeddings,
@@ -164,9 +161,7 @@ class VoxtralTTSWorker:
             self.request_slots.release()
             raise
         future.add_done_callback(
-            lambda completed_future: self.complete_request(
-                completed_future, event_loop
-            )
+            lambda completed_future: self.complete_request(completed_future, event_loop)
         )
         try:
             return await asyncio.wait_for(

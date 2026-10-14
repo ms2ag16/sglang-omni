@@ -11,9 +11,9 @@ import mlx.nn as nn
 from mlx_lm.models.cache import KVCache
 
 from sglang_omni_mlx.voxtral_tts.acoustic_head import (
-    FlowMatchingAudioTransformer,
     SEMANTIC_VOCAB_ALIGNMENT,
     SPECIAL_TOKEN_COUNT,
+    FlowMatchingAudioTransformer,
     padded_size,
 )
 from sglang_omni_mlx.voxtral_tts.audio_tokenizer import AudioTokenizerDecoder
@@ -170,7 +170,8 @@ class VoxtralMLXModel(nn.Module):
             dtype=mx.int32,
         )
         self.audio_code_embeddings = nn.Embedding(
-            padded_size(sum(codebook_sizes), SEMANTIC_VOCAB_ALIGNMENT), config.text.dim)
+            padded_size(sum(codebook_sizes), SEMANTIC_VOCAB_ALIGNMENT), config.text.dim
+        )
         self.audio_tokenizer: AudioTokenizerDecoder | None = None
 
     def new_caches(self) -> list[KVCache]:

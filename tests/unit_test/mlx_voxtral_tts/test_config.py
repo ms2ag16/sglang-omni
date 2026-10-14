@@ -8,14 +8,9 @@ from pathlib import Path
 
 import pytest
 
-from sglang_omni_mlx.voxtral_tts.config import (
-    AudioTokenizerConfig,
-    read_voxtral_config,
-)
+from sglang_omni_mlx.voxtral_tts.config import AudioTokenizerConfig, read_voxtral_config
 
-JsonValue = (
-    str | int | float | bool | None | list["JsonValue"] | dict[str, "JsonValue"]
-)
+JsonValue = str | int | float | bool | None | list["JsonValue"] | dict[str, "JsonValue"]
 
 PARAMS: dict[str, JsonValue] = {
     "dim": 3072,
