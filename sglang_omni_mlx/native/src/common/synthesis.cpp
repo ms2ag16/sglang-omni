@@ -34,10 +34,11 @@ SynthesisWorker::~SynthesisWorker() {
   }
 }
 
-std::future<SynthesisResult> SynthesisWorker::Submit(SynthesisRequest request) {
+SynthesisTask SynthesisWorker::Submit(SynthesisRequest request) {
   auto job = std::make_unique<Job>();
   job->request = std::move(request);
   job->cancelled = std::make_shared<std::atomic<bool>>(false);
+  std::shared_ptr<std::atomic<bool>> cancelled = job->cancelled;
   std::future<SynthesisResult> result = job->result.get_future();
   {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -50,15 +51,32 @@ std::future<SynthesisResult> SynthesisWorker::Submit(SynthesisRequest request) {
     queue_.push_back(std::move(job));
   }
   wake_.notify_one();
-  return result;
+  return {std::move(result), std::move(cancelled)};
 }
 
 void SynthesisWorker::WaitUntilReady() { startup_future_.get(); }
 
+bool SynthesisWorker::WaitUntilReady(std::chrono::milliseconds timeout) {
+  if (startup_future_.wait_for(timeout) != std::future_status::ready) {
+    return false;
+  } else {
+  }
+  startup_future_.get();
+  return true;
+}
+
 std::map<std::string, int> SynthesisWorker::RequestStates() const {
   std::lock_guard<std::mutex> lock(mutex_);
-  return {{"queued", static_cast<int>(queue_.size())},
-          {"running", running_ ? 1 : 0}};
+  std::map<std::string, int> states;
+  if (running_) {
+    states["running"] = 1;
+  } else {
+  }
+  if (!queue_.empty()) {
+    states["queued"] = static_cast<int>(queue_.size());
+  } else {
+  }
+  return states;
 }
 
 void SynthesisWorker::CancelAll() {

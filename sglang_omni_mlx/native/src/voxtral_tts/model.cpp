@@ -364,9 +364,10 @@ struct VoxtralModel::AcousticHead {
                           queries.dtype());
       keys = mx::transpose(keys, {0, 2, 1, 3});
       values = mx::transpose(values, {0, 2, 1, 3});
-      const mx::array attention_scores =
-          mx::matmul(queries, mx::transpose(keys, {0, 1, 3, 2}));
-      const mx::array attention_weights = mx::softmax(attention_scores, -1);
+      const mx::array attention_scores = mx::astype(
+          mx::matmul(queries, mx::transpose(keys, {0, 1, 3, 2})), mx::float32);
+      const mx::array attention_weights =
+          mx::astype(softmax(attention_scores, -1), values.dtype());
       const mx::array attended = mx::matmul(attention_weights, values);
       const mx::array attention_output = Linear(
           mx::reshape(mx::transpose(attended, {0, 2, 1, 3}),
@@ -526,8 +527,8 @@ mx::array VoxtralModel::LoadVoiceEmbedding(const std::string &voice) const {
                                            (voice + ".safetensors");
   if (!std::filesystem::is_regular_file(voice_path)) {
     throw std::runtime_error(
-        "native Voxtral voice embedding is missing; convert the checkpoint's "
-        ".pt embeddings to safetensors first, expected " +
+        "native Voxtral voice embedding is missing; run "
+        "voxtral_tts_convert_voices on the checkpoint first, expected " +
         voice_path.string());
   } else {
   }
@@ -658,7 +659,12 @@ VoxtralModel::Generate(const std::vector<int> &prompt_token_ids,
 }
 
 std::vector<float>
-VoxtralModel::DecodeAudio(const std::vector<std::vector<int>> &frames) const {
+VoxtralModel::DecodeAudio(const std::vector<std::vector<int>> &frames,
+                          const std::atomic<bool> &cancelled) const {
+  if (cancelled.load()) {
+    throw std::runtime_error("Voxtral speech generation cancelled");
+  } else {
+  }
   if (frames.empty()) {
     throw std::invalid_argument(
         "Voxtral audio decoder requires at least one frame");
@@ -692,6 +698,10 @@ VoxtralModel::DecodeAudio(const std::vector<std::vector<int>> &frames) const {
                                     mx::int32);
   mx::array waveform =
       mx::reshape(audio_tokenizer_->Decode(audio_code_tensor), {-1});
+  if (cancelled.load()) {
+    throw std::runtime_error("Voxtral speech generation cancelled");
+  } else {
+  }
   const int trim_sample_count = 2 * audio_tokenizer_->downsample_factor();
   if (waveform.shape(0) <= trim_sample_count) {
     throw std::runtime_error("Voxtral audio decoder returned too few samples");
@@ -707,6 +717,10 @@ VoxtralModel::DecodeAudio(const std::vector<std::vector<int>> &frames) const {
       {fade_length});
   waveform = mx::astype(waveform, mx::float32);
   mx::eval(waveform);
+  if (cancelled.load()) {
+    throw std::runtime_error("Voxtral speech generation cancelled");
+  } else {
+  }
   return std::vector<float>(waveform.data<float>(),
                             waveform.data<float>() + waveform.size());
 }

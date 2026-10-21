@@ -3,6 +3,7 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <cstdint>
 #include <deque>
@@ -29,6 +30,11 @@ struct SynthesisResult {
   std::string finish_reason;
 };
 
+struct SynthesisTask {
+  std::future<SynthesisResult> result;
+  std::shared_ptr<std::atomic<bool>> cancelled;
+};
+
 using SynthesisFunction = std::function<SynthesisResult(
     const SynthesisRequest &, const std::atomic<bool> &)>;
 using SynthesisInitializer = std::function<void()>;
@@ -41,8 +47,9 @@ public:
   SynthesisWorker(const SynthesisWorker &) = delete;
   SynthesisWorker &operator=(const SynthesisWorker &) = delete;
 
-  std::future<SynthesisResult> Submit(SynthesisRequest request);
+  SynthesisTask Submit(SynthesisRequest request);
   void WaitUntilReady();
+  bool WaitUntilReady(std::chrono::milliseconds timeout);
   std::map<std::string, int> RequestStates() const;
   void CancelAll();
 

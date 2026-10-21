@@ -33,8 +33,8 @@ public:
                           const mlx::core::array &voice_embedding,
                           int max_new_tokens, uint64_t seed,
                           const std::atomic<bool> &cancelled) const;
-  std::vector<float>
-  DecodeAudio(const std::vector<std::vector<int>> &frames) const;
+  std::vector<float> DecodeAudio(const std::vector<std::vector<int>> &frames,
+                                 const std::atomic<bool> &cancelled) const;
 
 private:
   struct TextDecoder;

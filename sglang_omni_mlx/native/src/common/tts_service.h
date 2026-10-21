@@ -2,6 +2,8 @@
 // Shared OpenAI-style TTS HTTP endpoint.
 #pragma once
 
+#include <filesystem>
+#include <functional>
 #include <set>
 #include <string>
 
@@ -24,5 +26,18 @@ private:
   std::set<std::string> voices_;
   SynthesisWorker &worker_;
 };
+
+struct TTSModel {
+  std::set<std::string> voices;
+  std::string default_voice;
+  SynthesisFunction synthesize;
+};
+
+struct TTSKind {
+  std::string model_kind;
+  std::function<TTSModel(const std::filesystem::path &)> load;
+};
+
+int ServeTTS(int argument_count, char **argument_values, const TTSKind &kind);
 
 } // namespace omni_server

@@ -109,11 +109,15 @@ add_executable(voxtral_tts_server src/voxtral_tts/voxtral_tts_server.cpp)
 target_link_libraries(voxtral_tts_server PRIVATE voxtral_tts omni_server)
 add_executable(voxtral_tts_generate tools/voxtral_tts_generate.cpp)
 target_link_libraries(voxtral_tts_generate PRIVATE voxtral_tts)
-set_target_properties(voxtral_tts_encode voxtral_tts_server voxtral_tts_generate PROPERTIES
+add_executable(voxtral_tts_convert_voices tools/convert_voxtral_voice_embeddings.cpp)
+target_link_libraries(voxtral_tts_convert_voices PRIVATE nlohmann_json::nlohmann_json)
+target_compile_options(voxtral_tts_convert_voices PRIVATE -Wall -Wextra)
+set_target_properties(voxtral_tts_encode voxtral_tts_server voxtral_tts_generate
+  voxtral_tts_convert_voices PROPERTIES
   BUILD_RPATH "${MLX_LIBRARY_DIRS};@loader_path"
   INSTALL_RPATH "@loader_path")
 install(TARGETS voxtral_tts_encode voxtral_tts_server voxtral_tts_generate
-  RUNTIME DESTINATION bin)
+  voxtral_tts_convert_voices RUNTIME DESTINATION bin)
 
 add_library(asr_service STATIC src/qwen3_asr/asr_service.cpp)
 target_link_libraries(asr_service PUBLIC qwen3_asr omni_server)
