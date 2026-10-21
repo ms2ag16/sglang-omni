@@ -12,15 +12,14 @@ namespace omni_server {
 
 class TTSService {
 public:
-  TTSService(std::string model_name, std::string default_voice,
-             std::set<std::string> voices, SynthesisWorker &worker);
+  TTSService(std::string default_voice, std::set<std::string> voices,
+             SynthesisWorker &worker);
   void Register(mg_context *context);
 
 private:
   static int HandleSpeech(mg_connection *connection, void *data);
   int Synthesize(mg_connection *connection);
 
-  std::string model_name_;
   std::string default_voice_;
   std::set<std::string> voices_;
   SynthesisWorker &worker_;

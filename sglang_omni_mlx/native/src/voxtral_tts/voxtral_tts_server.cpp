@@ -179,8 +179,8 @@ int main(int argument_count, char **argument_values) {
   omni_server::InfoRoutes info_routes(
       arguments.model_name, [&worker]() { return worker.RequestStates(); });
   omni_server::TTSService speech_service(
-      arguments.model_name, default_voice,
-      std::set<std::string>(voices.begin(), voices.end()), worker);
+      default_voice, std::set<std::string>(voices.begin(), voices.end()),
+      worker);
   const omni_server::HttpServer http_server =
       omni_server::StartHttpServer(arguments.host, arguments.port);
   if (http_server.context == nullptr) {

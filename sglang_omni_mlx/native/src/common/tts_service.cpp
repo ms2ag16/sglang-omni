@@ -18,10 +18,9 @@ constexpr int kMaximumNewTokens = 4096;
 
 } // namespace
 
-TTSService::TTSService(std::string model_name, std::string default_voice,
+TTSService::TTSService(std::string default_voice,
                        std::set<std::string> voices, SynthesisWorker &worker)
-    : model_name_(std::move(model_name)),
-      default_voice_(std::move(default_voice)), voices_(std::move(voices)),
+    : default_voice_(std::move(default_voice)), voices_(std::move(voices)),
       worker_(worker) {}
 
 void TTSService::Register(mg_context *context) {
@@ -63,14 +62,8 @@ int TTSService::Synthesize(mg_connection *connection) {
   } else {
   }
   const auto model_value = body.find("model");
-  if (model_value != body.end() &&
-      (!model_value->is_string() ||
-       model_value->get<std::string>() != model_name_)) {
-    return WriteJson(
-        connection, 404,
-        {{"detail", "Unknown model: " + (model_value->is_string()
-                                             ? model_value->get<std::string>()
-                                             : std::string())}});
+  if (model_value != body.end() && !model_value->is_string()) {
+    return BadRequest(connection, "model must be a string");
   } else {
   }
   const auto voice_value = body.find("voice");
