@@ -35,8 +35,7 @@ using SynthesisInitializer = std::function<void()>;
 
 class SynthesisWorker {
 public:
-  SynthesisWorker(SynthesisFunction synthesize,
-                  SynthesisInitializer initialize,
+  SynthesisWorker(SynthesisFunction synthesize, SynthesisInitializer initialize,
                   int max_queued_requests);
   ~SynthesisWorker();
   SynthesisWorker(const SynthesisWorker &) = delete;

@@ -16,12 +16,16 @@ def main() -> None:
     arguments = parser.parse_args()
     voice_directory = arguments.model_path / "voice_embedding"
     if not voice_directory.is_dir():
-        raise FileNotFoundError(f"Voxtral voice embeddings are missing: {voice_directory}")
+        raise FileNotFoundError(
+            f"Voxtral voice embeddings are missing: {voice_directory}"
+        )
     else:
         pass
     voice_paths = sorted(voice_directory.glob("*.pt"))
     if not voice_paths:
-        raise FileNotFoundError(f"Voxtral voice directory has no .pt files: {voice_directory}")
+        raise FileNotFoundError(
+            f"Voxtral voice directory has no .pt files: {voice_directory}"
+        )
     else:
         pass
     for voice_path in voice_paths:

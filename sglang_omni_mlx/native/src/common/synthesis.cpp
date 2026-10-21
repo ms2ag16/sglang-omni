@@ -9,8 +9,7 @@ namespace omni_server {
 SynthesisWorker::SynthesisWorker(SynthesisFunction synthesize,
                                  SynthesisInitializer initialize,
                                  int max_queued_requests)
-    : synthesize_(std::move(synthesize)),
-      initialize_(std::move(initialize)),
+    : synthesize_(std::move(synthesize)), initialize_(std::move(initialize)),
       max_queued_requests_(max_queued_requests), thread_() {
   if (!synthesize_ || !initialize_ || max_queued_requests_ < 0) {
     throw std::invalid_argument(

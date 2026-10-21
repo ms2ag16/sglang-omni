@@ -360,13 +360,13 @@ struct VoxtralModel::AcousticHead {
       } else {
       }
       queries = mx::transpose(queries, {0, 2, 1, 3}) *
-                std::pow(static_cast<double>(transformer.head_dimension), -0.5);
+                mx::array(1.0f / std::sqrt(transformer.head_dimension),
+                          queries.dtype());
       keys = mx::transpose(keys, {0, 2, 1, 3});
       values = mx::transpose(values, {0, 2, 1, 3});
-      const mx::array attention_scores = mx::astype(
-          mx::matmul(queries, mx::transpose(keys, {0, 1, 3, 2})), mx::float32);
-      const mx::array attention_weights =
-          mx::astype(mx::softmax(attention_scores, -1), values.dtype());
+      const mx::array attention_scores =
+          mx::matmul(queries, mx::transpose(keys, {0, 1, 3, 2}));
+      const mx::array attention_weights = mx::softmax(attention_scores, -1);
       const mx::array attended = mx::matmul(attention_weights, values);
       const mx::array attention_output = Linear(
           mx::reshape(mx::transpose(attended, {0, 2, 1, 3}),
@@ -434,16 +434,22 @@ struct VoxtralModel::AcousticHead {
           mx::slice(velocity, {0, 0}, {batch_size, velocity.shape(1)});
       const mx::array unconditional_velocity = mx::slice(
           velocity, {batch_size, 0}, {2 * batch_size, velocity.shape(1)});
+      const mx::Dtype velocity_dtype = conditional_velocity.dtype();
       const mx::array guided_velocity =
-          kClassifierFreeGuidanceAlpha * conditional_velocity +
-          (1.0f - kClassifierFreeGuidanceAlpha) * unconditional_velocity;
-      sampled = mx::astype(sampled + guided_velocity * step_size,
-                           sampled.dtype());
+          mx::array(kClassifierFreeGuidanceAlpha, velocity_dtype) *
+              conditional_velocity +
+          mx::array(1.0f - kClassifierFreeGuidanceAlpha, velocity_dtype) *
+              unconditional_velocity;
+      sampled = sampled + guided_velocity * step_size;
     }
-    sampled = mx::clip(sampled, mx::array(-1.0f), mx::array(1.0f));
-    const mx::array quantized =
-        mx::round((sampled + 1.0f) * 0.5f *
-                  static_cast<float>(config.acoustic_codebook_size - 1));
+    const mx::Dtype sampled_dtype = sampled.dtype();
+    sampled = mx::clip(sampled, mx::array(-1.0f, sampled_dtype),
+                       mx::array(1.0f, sampled_dtype));
+    const mx::array quantized = mx::round(
+        (sampled + mx::array(1.0f, sampled_dtype)) *
+        mx::array(0.5f, sampled_dtype) *
+        mx::array(static_cast<float>(config.acoustic_codebook_size - 1),
+                  sampled_dtype));
     const mx::array acoustic_codes =
         mx::astype(quantized, mx::int32) + kSpecialTokenCount;
     return mx::where(mx::expand_dims(should_decode, 1), acoustic_codes,

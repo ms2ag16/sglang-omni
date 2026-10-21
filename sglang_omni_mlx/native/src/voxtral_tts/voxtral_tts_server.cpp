@@ -159,8 +159,7 @@ int main(int argument_count, char **argument_values) {
             arguments.model_directory);
         for (const auto &voice_entry : config->voices) {
           voice_embeddings.emplace(
-              voice_entry.first,
-              model->LoadVoiceEmbedding(voice_entry.first));
+              voice_entry.first, model->LoadVoiceEmbedding(voice_entry.first));
         }
       },
       kMaximumQueuedRequests);

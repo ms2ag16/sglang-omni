@@ -69,8 +69,7 @@ AudioTokenizerDecoder::AudioTokenizerDecoder(
   for (size_t stack_index = 0; stack_index < config.transformer_lengths.size();
        ++stack_index) {
     const int layer_count = config.transformer_lengths[stack_index];
-    stacks_.push_back(
-        {decoder_block_index, layer_count, current_window_size});
+    stacks_.push_back({decoder_block_index, layer_count, current_window_size});
     ++decoder_block_index;
     const size_t next_stack_index = stack_index + 1;
     if (next_stack_index < config.transformer_lengths.size() &&
@@ -270,10 +269,10 @@ mx::array AudioTokenizerDecoder::Decode(const mx::array &audio_codes) const {
   const mx::array semantic_codes = mx::take(audio_codes, 0, 1);
   const mx::Dtype decoder_dtype =
       checkpoint_->Weight("output_proj.conv.weight").dtype();
-  const mx::array semantic_features = mx::astype(
-      mx::transpose(mx::take(semantic_embedding_, semantic_codes, 0),
-                    {0, 2, 1}),
-      decoder_dtype);
+  const mx::array semantic_features =
+      mx::astype(mx::transpose(mx::take(semantic_embedding_, semantic_codes, 0),
+                               {0, 2, 1}),
+                 decoder_dtype);
   const mx::array acoustic_codes =
       mx::astype(mx::slice(audio_codes, {0, 1, 0},
                            {audio_codes.shape(0), audio_codes.shape(1),

@@ -41,7 +41,8 @@ int main(int argument_count, char **argument_values) {
       throw std::invalid_argument("unknown argument " + flag);
     }
   }
-  if (model_path.empty() || voice.empty() || text.empty() || max_new_tokens < 1) {
+  if (model_path.empty() || voice.empty() || text.empty() ||
+      max_new_tokens < 1) {
     throw std::invalid_argument(
         "--model-path, --voice, nonempty --text and positive --max-new-tokens "
         "are required");
