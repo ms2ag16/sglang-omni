@@ -27,16 +27,16 @@ class FakeWorker:
     voice_embeddings: dict[str, np.ndarray] = field(
         default_factory=lambda: {"cheerful_female": np.zeros((1, 4), dtype=np.float32)}
     )
-    calls: list[tuple[str, str, int]] = field(default_factory=list)
+    calls: list[tuple[str, str, int, int]] = field(default_factory=list)
     failure: Exception | None = None
 
     def request_states(self) -> dict[str, int]:
         return {"queued": 0, "running": 0}
 
     async def synthesize(
-        self, text: str, voice: str, max_new_tokens: int
+        self, text: str, voice: str, max_new_tokens: int, seed: int
     ) -> SpeechResult:
-        self.calls.append((text, voice, max_new_tokens))
+        self.calls.append((text, voice, max_new_tokens, seed))
         if self.failure is not None:
             raise self.failure
         else:
@@ -55,13 +55,14 @@ def test_speech_route_returns_wav_and_forwards_options() -> None:
             "voice": "cheerful_female",
             "response_format": "wav",
             "max_new_tokens": 24,
+            "seed": 12,
         },
     )
     assert response.status_code == 200
     assert response.headers["content-type"] == "audio/wav"
     assert response.content[:4] == b"RIFF"
     assert response.headers["x-speech-finish-reason"] == "stop"
-    assert worker.calls == [("Hello there.", "cheerful_female", 24)]
+    assert worker.calls == [("Hello there.", "cheerful_female", 24, 12)]
 
 
 def test_health_and_models_routes_return_server_state() -> None:
@@ -131,7 +132,7 @@ def test_speech_route_returns_json_for_worker_errors(
 
     assert response.status_code == status_code
     assert response.json() == {"detail": detail}
-    assert worker.calls == [("Hello there.", "cheerful_female", 4096)]
+    assert worker.calls == [("Hello there.", "cheerful_female", 4096, 0)]
     if status_code == 429:
         assert response.headers["retry-after"] == "5"
     else:

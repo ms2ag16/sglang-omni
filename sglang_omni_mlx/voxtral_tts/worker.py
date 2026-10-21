@@ -84,6 +84,7 @@ class VoxtralTTSWorker:
         voice: str,
         max_new_tokens: int,
         cancellation_event: threading.Event,
+        seed: int,
     ) -> SpeechResult:
         with self.state_lock:
             self.queued_requests -= 1
@@ -99,6 +100,7 @@ class VoxtralTTSWorker:
                 prompt_token_ids,
                 self.voice_embeddings[voice],
                 cancellation_event,
+                seed,
             )
             audio_tokenizer = self.model.audio_tokenizer
             assert audio_tokenizer is not None
@@ -128,7 +130,7 @@ class VoxtralTTSWorker:
         event_loop.call_soon_threadsafe(self.request_slots.release)
 
     async def synthesize(
-        self, text: str, voice: str, max_new_tokens: int
+        self, text: str, voice: str, max_new_tokens: int, seed: int
     ) -> SpeechResult:
         try:
             await asyncio.wait_for(
@@ -150,6 +152,7 @@ class VoxtralTTSWorker:
                 voice,
                 max_new_tokens,
                 cancellation_event,
+                seed,
             )
         except Exception:
             with self.state_lock:

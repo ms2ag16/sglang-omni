@@ -44,6 +44,7 @@ class SpeechBody(BaseModel):
         ge=1,
         le=MAX_NEW_TOKENS_LIMIT,
     )
+    seed: int = Field(default=0, ge=0)
 
     @field_validator("input")
     @classmethod
@@ -97,6 +98,7 @@ def build_app(worker: VoxtralTTSWorker, model_name: str) -> Starlette:
                 body.input,
                 body.voice,
                 body.max_new_tokens,
+                body.seed,
             )
         except SpeechQueueFullError as error:
             return JSONResponse(

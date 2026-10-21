@@ -56,6 +56,7 @@ class VoxtralSynthesizer:
         prompt_token_ids: list[int],
         voice_embedding: mx.array | None,
         cancellation_event: Event,
+        seed: int,
     ) -> GeneratedAudioCodes:
         if not prompt_token_ids:
             raise ValueError("Voxtral prompt must contain at least one token")
@@ -99,6 +100,7 @@ class VoxtralSynthesizer:
 
         caches = self.model.new_caches()
         language_hidden_states = self.model.text_model(prompt_embeddings, caches)
+        mx.random.seed(seed)
         generated_codes: list[mx.array] = []
         for _ in range(self.max_audio_frames):
             if cancellation_event.is_set():
@@ -143,13 +145,14 @@ class VoxtralSynthesizer:
         prompt_token_ids: list[int],
         voice_embedding: mx.array | None,
         cancellation_event: Event,
+        seed: int,
     ) -> AudioSynthesisResult:
         if self.model.audio_tokenizer is None:
             raise RuntimeError("Voxtral audio tokenizer was not loaded")
         else:
             pass
         generation_result = self.generate_codes(
-            prompt_token_ids, voice_embedding, cancellation_event
+            prompt_token_ids, voice_embedding, cancellation_event, seed
         )
         if generation_result.audio_codes.shape[0] == 0:
             raise RuntimeError("Voxtral TTS generated no audio codes")

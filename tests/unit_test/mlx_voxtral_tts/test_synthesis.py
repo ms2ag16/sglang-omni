@@ -52,7 +52,7 @@ def test_generate_codes_reports_length_when_end_token_is_not_generated() -> None
         FakeModel([2, 3]), audio_token_id=24, max_audio_frames=2
     )
 
-    result = synthesizer.generate_codes([10], None, Event())
+    result = synthesizer.generate_codes([10], None, Event(), seed=0)
 
     assert result.finish_reason == "length"
     assert result.audio_codes.tolist() == [[2, 4, 5], [3, 4, 5]]
@@ -63,7 +63,7 @@ def test_generate_codes_reports_stop_when_end_token_is_generated() -> None:
         FakeModel([END_AUDIO_TOKEN_ID]), audio_token_id=24, max_audio_frames=2
     )
 
-    result = synthesizer.generate_codes([10], None, Event())
+    result = synthesizer.generate_codes([10], None, Event(), seed=0)
 
     assert result.finish_reason == "stop"
     assert result.audio_codes.shape == (0, 3)
@@ -77,4 +77,4 @@ def test_generate_codes_stops_when_request_is_cancelled() -> None:
     )
 
     with pytest.raises(SpeechGenerationCancelledError):
-        synthesizer.generate_codes([10], None, cancellation_event)
+        synthesizer.generate_codes([10], None, cancellation_event, seed=0)
